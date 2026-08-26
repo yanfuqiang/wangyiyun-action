@@ -41,13 +41,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ -z "${WYY_USERS:-}" || -z "${WYY_PASSWORDS:-}" ]]; then
-            echo "请配置 USER 和 PWD Secrets"
+          if [[ -z "${WYY_USERS:-}" || ( -z "${WYY_PASSWORDS:-}" && -z "${WYY_COOKIES:-}" ) ]]; then
+            echo "请配置 USER，并配置 PWD 或 COOKIE Secret"
             exit 1
           fi
 
           IFS='#' read -r -a users <<< "$WYY_USERS"
-          IFS='#' read -r -a passwords <<< "$WYY_PASSWORDS"
+          passwords=()
+          if [[ -n "${WYY_PASSWORDS:-}" ]]; then
+            IFS='#' read -r -a passwords <<< "$WYY_PASSWORDS"
+          else
+            for ((i = 0; i < ${#users[@]}; i++)); do passwords+=(""); done
+          fi
           cookies=()
           if [[ -n "${WYY_COOKIES:-}" ]]; then
             IFS='#' read -r -a cookies <<< "$WYY_COOKIES"
