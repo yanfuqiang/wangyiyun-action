@@ -37,6 +37,7 @@ jobs:
         env:
           WYY_USERS: ${{ secrets.USER }}
           WYY_PASSWORDS: ${{ secrets.PWD }}
+          WYY_COOKIES: ${{ secrets.COOKIE }}
         run: |
           set -euo pipefail
 
@@ -47,11 +48,21 @@ jobs:
 
           IFS='#' read -r -a users <<< "$WYY_USERS"
           IFS='#' read -r -a passwords <<< "$WYY_PASSWORDS"
+          cookies=()
+          if [[ -n "${WYY_COOKIES:-}" ]]; then
+            IFS='#' read -r -a cookies <<< "$WYY_COOKIES"
+            if [[ "${#cookies[@]}" -ne "${#users[@]}" ]]; then
+              echo "COOKIE 设置后，Cookie 数量必须与 USER 一致"
+              exit 1
+            fi
+          fi
           if [[ "${#users[@]}" -ne "${#passwords[@]}" ]]; then
             echo "USER 和 PWD 中的账号数量不一致"
             exit 1
           fi
 
           for ((i = 0; i < ${#users[@]}; i++)); do
-            printf '%s\n%s\n' "${users[i]}" "${passwords[i]}" | python checkin.py
+            cookie=""
+            if [[ "${#cookies[@]}" -gt 0 ]]; then cookie="${cookies[i]}"; fi
+            printf '%s\n%s\n%s\n' "${users[i]}" "${passwords[i]}" "$cookie" | python checkin.py
           done

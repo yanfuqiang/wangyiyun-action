@@ -71,6 +71,16 @@ def csrf_token(session: requests.Session) -> str:
     return token
 
 
+def load_cookie_header(session: requests.Session, cookie_header: str) -> None:
+    """Load a browser Cookie header into the requests session."""
+    for item in cookie_header.split(";"):
+        if "=" not in item:
+            continue
+        name, value = item.strip().split("=", 1)
+        if name:
+            session.cookies.set(name, value, domain="music.163.com")
+
+
 def build_play_logs(
     session: requests.Session, recommendations: Iterable[Dict[str, Any]], token: str
 ) -> List[Dict[str, Any]]:
@@ -108,26 +118,33 @@ def build_play_logs(
     return logs
 
 
-def run(phone: str, password: str) -> int:
-    if not phone or not password:
-        raise ValueError("手机号和密码不能为空")
+def run(phone: str, password: str, cookie_header: str = "") -> int:
+    if not cookie_header and (not phone or not password):
+        raise ValueError("请提供手机号/密码，或提供网易云 Cookie")
 
     session = requests.Session()
     session.headers.update(DEFAULT_HEADERS)
 
-    login = post_json(
-        session,
-        LOGIN_URL,
-        {
-            "phone": phone,
-            "countrycode": "86",
-            "password": md5_hex(password),
-            "rememberLogin": "true",
-        },
-    )
-    if login.get("code") != 200:
-        raise RuntimeError(f"登录失败，错误码：{login.get('code')}，{login.get('msg', '')}")
-    print("登录成功")
+    if cookie_header:
+        load_cookie_header(session, cookie_header)
+        print("使用 Cookie 登录")
+    else:
+        login = post_json(
+            session,
+            LOGIN_URL,
+            {
+                "phone": phone,
+                "countrycode": "86",
+                "password": md5_hex(password),
+                "rememberLogin": "true",
+            },
+        )
+        if login.get("code") != 200:
+            code = login.get("code")
+            if code == 8821:
+                raise RuntimeError("登录被网易云风控拦截（8821）。请改用 COOKIE Secret，或先在网页端完成验证后重试")
+            raise RuntimeError(f"登录失败，错误码：{code}，{login.get('msg') or login.get('message', '')}")
+        print("登录成功")
 
     token = csrf_token(session)
     daily = post_json(session, DAILY_TASK_URL, {"type": 0})
@@ -159,8 +176,9 @@ def run(phone: str, password: str) -> int:
 def main() -> int:
     phone = sys.stdin.readline().rstrip("\r\n").strip()
     password = sys.stdin.readline().rstrip("\r\n")
+    cookie_header = sys.stdin.readline().rstrip("\r\n").strip()
     try:
-        return run(phone, password)
+        return run(phone, password, cookie_header)
     except (requests.RequestException, ValueError, RuntimeError, json.JSONDecodeError) as exc:
         print(f"执行失败：{exc}", file=sys.stderr)
         return 1
